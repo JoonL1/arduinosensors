@@ -1,5 +1,5 @@
-#ifndef H_MQ7
-#define H_MQ7
+#ifndef H_MG811
+#define H_MG811
 
 #if ARDUINO < 100
 #include <WProgram.h>
@@ -7,19 +7,18 @@
 #include <Arduino.h>
 #endif
 
-class MQ7 {
+class MG811 {
 public:
-    MQ7(uint8_t pin);
-    void begin();
-    float read(); // Return CO concentration in ppm
-    float raw();  // Return raw voltage from the sensor
-    void calibrate(); // Calibration routine
+    MG811(uint8_t input);
+    void begin(float v400, float v40000);
+    float read();       // return the air quality in 'ppm'
+    float raw();        // return raw data (in volt) from the sensor
+    void calibrate();   // calibrate the sensor to get reference values
 
 private:
-    uint8_t _pin;
-    float _RLoad; // Load resistance
-    float voltageConversion(int value);
-    float getRatio();
+    uint8_t _input;
+    float _V400;
+    float _V40000;
 };
 
 #endif
