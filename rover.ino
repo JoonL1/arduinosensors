@@ -1,31 +1,26 @@
-/*********************************************************************
-This sketch demonstrates the use of the Plantower PMS7003 laser particle
-counter sensor with a rover. It integrates the sensor to monitor air
-quality and make decisions based on PM1.0, PM2.5, and PM10 concentrations.
-
-Written for the PMS7003 sensor.
-BSD license. See license.txt for details.
-*********************************************************************/
-
 #include <Arduino.h>
+#include "MQ7.h"
 #include "Plantower_PMS7003.h"
 
-// Define pins for motors, sensors, etc.
+// Define pins for motors and sensors
 #define MOTOR_LEFT_FORWARD_PIN 9
 #define MOTOR_LEFT_BACKWARD_PIN 10
 #define MOTOR_RIGHT_FORWARD_PIN 11
 #define MOTOR_RIGHT_BACKWARD_PIN 12
+#define MQ7_SENSOR_PIN A0
 
 #define SERIAL_SPEED 9600
 
-// Initialize PMS7003 sensor
+// Initialize PMS7003 and MQ7 sensor
 Plantower_PMS7003 pms7003;
+MQ7 mq7(MQ7_SENSOR_PIN, 5.0);
 char output[256];
 
 // Function prototypes
 void moveForward();
 void stopMovement();
 void updateAirQuality();
+void updateCOLevels();
 
 void setup() {
   Serial.begin(SERIAL_SPEED);
@@ -34,7 +29,7 @@ void setup() {
   // Initialize PMS7003
   pms7003.init(&Serial1);
   Serial.println("Initializing PMS7003 sensor...");
-  delay(1000);  // Give some time for the sensor to warm up
+  delay(1000);  // Allow time for sensor warm-up
 }
 
 void loop() {
@@ -44,8 +39,10 @@ void loop() {
     updateAirQuality();
   }
 
-  // Example rover behavior based on air quality
-  if (pms7003.getPM_2_5() > 35) {  // Threshold for PM2.5 (example value)
+  updateCOLevels();
+
+  // Example rover behavior based on air quality and CO levels
+  if (pms7003.getPM_2_5() > 35 || mq7.getPPM() > 35) {  // Threshold values for PM2.5 and CO
     Serial.println("Air quality poor! Stopping rover.");
     stopMovement();
   } else {
@@ -76,6 +73,12 @@ void updateAirQuality() {
           pms7003.getPM_10_0(),
           pms7003.getPM_10_0_atmos());
   Serial.print(output);
+}
+
+void updateCOLevels() {
+  float coPPM = mq7.getPPM();
+  Serial.print("CO Concentration (PPM): ");
+  Serial.println(coPPM);
 }
 
 void moveForward() {
