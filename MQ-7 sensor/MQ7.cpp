@@ -1,29 +1,42 @@
 #include "MQ7.h"
 
-// Constructor to initialize the analog pin and input voltage to MQ7
-MQ7::MQ7(uint8_t pin, float v_input) {
-  analogPin = pin;
-  v_in = v_input;
+// Constructor
+MQ7Sensor::MQ7Sensor(int pin) : sensorPin(pin), calibrationFactor(2000.0) {}
+
+// Initialize the MQ7 sensor
+void MQ7Sensor::begin() {
+    pinMode(sensorPin, INPUT); // Set the pin as an input
+    initializeSensor(); // Additional initialization if needed
 }
 
-// Function to return the ppm value of CO gas concentration
-float MQ7::getPPM() {
-  return (float)(coefficient_A * pow(getRatio(), coefficient_B));
+// Initialize the sensor (if specific setup is needed)
+void MQ7Sensor::initializeSensor() {
+    // Add any sensor-specific initialization here if required
 }
 
-// Function to convert analog input value to voltage
-float MQ7::voltageConversion(int value) {
-  return (float)value * (v_in / 1023.0);
+// Read CO concentration in ppm from the MQ7 sensor
+float MQ7Sensor::readCO() {
+    int sensorValue = analogRead(sensorPin); // Read the analog value from the sensor
+    float voltage = sensorValue * (5.0 / 1023.0); // Convert the analog value to voltage
+
+    // Convert voltage to CO concentration in ppm
+    // The conversion factor may need to be adjusted based on calibration data
+    float coPPM = (voltage - 0.5) * calibrationFactor; // Example conversion formula
+    return coPPM > 0 ? coPPM : 0; // Ensure no negative readings
 }
 
-// Function to derive the Rs/R0 to find ppm
-float MQ7::getRatio() {
-  int value = analogRead(analogPin);
-  float v_out = voltageConversion(value);
-  return (v_in - v_out) / v_out;
-}
-
-// Function to find the sensor resistance Rs
-float MQ7::getSensorResistance() {
-  return R_Load * getRatio();
+// Log CO concentration data to an SD card
+void MQ7Sensor::logDataToSD(File &dataFile) {
+    // Ensure the data file is open
+    if (!dataFile) {
+        Serial.println("Error: Data file is not open.");
+        return;
+    }
+    
+    float coPPM = readCO();
+    
+    // Log the data with timestamp
+    dataFile.print("CO Concentration: ");
+    dataFile.print(coPPM);
+    dataFile.println(" ppm");
 }
