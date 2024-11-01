@@ -1,112 +1,78 @@
-#include "Plantower_PMS7003.h"
+#include "MQ811.h"
 
 // Constructor
-Plantower_PMS7003::Plantower_PMS7003() {
-    dataReady = false;
-    initialized = false;
-    debug = false;
+PMS7003Sensor::PMS7003Sensor(int rxPin, int txPin) 
+    : pmsSerial(rxPin, txPin), pm10(0), pm25(0), pm100(0) {}
+
+// Initialize the PMS7003 sensor
+void PMS7003Sensor::begin() {
+    pmsSerial.begin(9600); // Start serial communication at 9600 baud
+    initializeSensor(); // Additional initialization if needed
 }
 
-// Initialize the sensor with a specified serial stream
-void Plantower_PMS7003::init(Stream *s) {
-    dataReady = false;
-    serial = s;
-    nextByte = 0;
-    lastByte = 0;
-    bufferIndex = 0;
-    initialized = true;
+// Initialize the sensor (if specific setup is needed)
+void PMS7003Sensor::initializeSensor() {
+    // Any additional initialization can go here if needed
 }
 
-// Update the sensor data frame
-void Plantower_PMS7003::updateFrame() {
-    if (!initialized) {
-        Serial.println("Error: must call Plantower_PMS7003::init()");
+// Request data from the PMS7003 sensor
+void PMS7003Sensor::requestData() {
+    pmsSerial.write(0x42); // Send command to read data
+    pmsSerial.write(0x4D); // Followed by additional command byte
+}
+
+// Read the response from the sensor
+bool PMS7003Sensor::readResponse() {
+    if (pmsSerial.available() >= 32) { // Expecting a 32-byte response
+        uint8_t response[32];
+        pmsSerial.readBytes(response, 32); // Read the response into the buffer
+
+        // Check for valid response (first byte should be 0x42)
+        if (response[0] == 0x42) {
+            pm10 = (response[10] << 8) | response[9]; // PM10 value
+            pm25 = (response[12] << 8) | response[11]; // PM2.5 value
+            pm100 = (response[14] << 8) | response[13]; // PM100 value
+            return true; // Successfully read the data
+        }
+    }
+    return false; // Failed to read data
+}
+
+// Read and process data from the PMS7003 sensor
+void PMS7003Sensor::readData() {
+    requestData(); // Send request for data
+    delay(300); // Wait for the sensor to respond
+    if (!readResponse()) {
+        Serial.println("Failed to read data from PMS7003");
+    }
+}
+
+// Log PM data to an SD card
+void PMS7003Sensor::logDataToSD(File &dataFile) {
+    // Ensure the data file is open
+    if (!dataFile) {
+        Serial.println("Error: Data file is not open.");
         return;
     }
-    dataReady = false;
-    if (serial->available()) {
-        nextByte = serial->read();
 
-        if (nextByte == 0x4D && lastByte == 0x42) {
-            sensorData.bytes[0] = 0x42;
-            bufferIndex = 1;
-        }
-        sensorData.bytes[bufferIndex] = nextByte;    
-        bufferIndex++;
-        lastByte = nextByte;
-    }
-
-    if (bufferIndex == PMS7003_DATA_SIZE) {
-        if (sensorData.bytes[0] == 0x42 && sensorData.bytes[1] == 0x4D) {
-            convertSensorData();
-
-            if (isValidChecksum()) {
-                dataReady = true;
-            } else {
-                if (debug) {
-                    Serial.println("Invalid data checksum");
-                }
-            }
-        }
-        bufferIndex = 0; // Reset buffer index for next frame
-    }
+    readData(); // Read data from the sensor
+    dataFile.print("PM10: ");
+    dataFile.print(pm10);
+    dataFile.print(" particles/m³, PM2.5: ");
+    dataFile.print(pm25);
+    dataFile.print(" particles/m³, PM100: ");
+    dataFile.print(pm100);
+    dataFile.println(" particles/m³");
 }
 
-// Check if new data is available
-bool Plantower_PMS7003::hasNewData() {
-    return dataReady;
-}
-
-// Get PM values
-uint16_t Plantower_PMS7003::getPM_1_0() { return sensorData.values.pm_1_0; }
-uint16_t Plantower_PMS7003::getPM_2_5() { return sensorData.values.pm_2_5; }
-uint16_t Plantower_PMS7003::getPM_10_0() { return sensorData.values.pm_10_0; }
-uint16_t Plantower_PMS7003::getPM_1_0_atmos() { return sensorData.values.pm_1_0_atmos; }
-uint16_t Plantower_PMS7003::getPM_2_5_atmos() { return sensorData.values.pm_2_5_atmos; }
-uint16_t Plantower_PMS7003::getPM_10_0_atmos() { return sensorData.values.pm_10_0_atmos; }
-
-uint16_t Plantower_PMS7003::getRawGreaterThan_0_3() { return sensorData.values.raw_gt_0_3; }
-uint16_t Plantower_PMS7003::getRawGreaterThan_0_5() { return sensorData.values.raw_gt_0_5; }
-uint16_t Plantower_PMS7003::getRawGreaterThan_1_0() { return sensorData.values.raw_gt_1_0; }
-uint16_t Plantower_PMS7003::getRawGreaterThan_2_5() { return sensorData.values.raw_gt_2_5; }
-uint16_t Plantower_PMS7003::getRawGreaterThan_5_0() { return sensorData.values.raw_gt_5_0; }
-uint16_t Plantower_PMS7003::getRawGreaterThan_10_0() { return sensorData.values.raw_gt_10_0; }
-
-uint8_t Plantower_PMS7003::getHWVersion() { return sensorData.values.version_number; }
-uint8_t Plantower_PMS7003::getErrorCode() { return sensorData.values.error_code; }
-
-// Convert sensor data from raw bytes to usable values
-void Plantower_PMS7003::convertSensorData() {
-    int loc = 0;
-
-    loc += 1; // First byte (fixed)
-
-    // Next 13 words are 16-bit ints
-    for (int i = 0; i < 13; i++) {
-        sensorData.words[loc] = uint16FromBufferData(sensorData.bytes, loc * 2);
-        loc++;
-    }
-
-    loc += 1; // Skip one byte for frame length
-
-    // Final checksum word is 16-bit
-    sensorData.words[loc] = uint16FromBufferData(sensorData.bytes, loc * 2);
-}
-
-// Check data integrity with checksum
-bool Plantower_PMS7003::isValidChecksum() {
-    uint16_t sum = 0;
-    
-    for (int i = 0; i < (PMS7003_DATA_SIZE - 2); i++) {
-        sum += sensorData.bytes[i];
-    }
-    return (sum == sensorData.values.checksum);
-}
-
-// Convert from buffer data
-uint16_t Plantower_PMS7003::uint16FromBufferData(unsigned char *buff, int loc) {
-    if (loc > PMS7003_DATA_SIZE - 2 || loc < 2) {
-        return -1;
-    }
-    return ((buff[loc] << 8) + buff[loc + 1]);
+// Print PM data to Serial Monitor for debugging
+void PMS7003Sensor::printDataToSerial() {
+    readData(); // Read data from the sensor
+    Serial.print("PM10: ");
+    Serial.print(pm10);
+    Serial.print(" particles/m³, PM2.5: ");
+    Serial.print(pm25);
+    Serial.print(" particles/m³, PM100: ");
+    Serial.print(pm100);
+    Serial.println(" particles/m³");
 }
