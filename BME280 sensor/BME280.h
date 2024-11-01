@@ -3,36 +3,26 @@
 
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
-#include <Adafruit_BME280.h>  // Include the Adafruit BME280 library
+#include <Adafruit_BME280.h>
 
-// BME280 Sensor Class Definition
+// Class to handle BME280 sensor functionalities
 class BME280Sensor {
 public:
-    // Constructor
     BME280Sensor();
+    bool begin();                     // Initialize the BME280 sensor
+    void readData();                 // Read temperature, humidity, and pressure
+    void logDataToSDCard(File &dataFile); // Log data to SD card
+    void displayData();              // Display data on the serial monitor
 
-    // Function to initialize the BME280 sensor
-    bool begin();
-
-    // Function to read data from the sensor
-    void readSensorData();
-
-    // Function to log data to an SD card
-    void logData(File &dataFile);
-
-    // Function to display data for debugging purposes
-    void displayData();
-
-    // Getters for temperature, humidity, and pressure
-    float getTemperature();
-    float getHumidity();
-    float getPressure();
+    float getTemperature();          // Getter for temperature
+    float getHumidity();             // Getter for humidity
+    float getPressure();             // Getter for pressure
 
 private:
-    Adafruit_BME280 bme; // Instance of the BME280 sensor
-    float temperature;    // Variable to store temperature
-    float humidity;       // Variable to store humidity
-    float pressure;       // Variable to store pressure
+    Adafruit_BME280 bme;             // BME280 instance
+    float temperature;                // Temperature in Celsius
+    float humidity;                   // Humidity in percentage
+    float pressure;                   // Pressure in hPa
 };
 
 #endif // BME280_H
