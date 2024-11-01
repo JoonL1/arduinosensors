@@ -1,161 +1,123 @@
-#include <Arduino.h>
-#include "MQ7.h"
-#include "MQ811.h"
-#include "Plantower_PMS7003.h"
+#include <Wire.h>
+#include <SD.h>
+#include <SPI.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 #include "VCNL4010.h"
 
-// Define pins for motors and sensors
-#define MOTOR_LEFT_FORWARD_PIN 9
-#define MOTOR_LEFT_BACKWARD_PIN 10
-#define MOTOR_RIGHT_FORWARD_PIN 11
-#define MOTOR_RIGHT_BACKWARD_PIN 12
-#define MQ7_SENSOR_PIN A0
-#define MQ811_SENSOR_PIN A1
-#define BME280_I2C_ADDRESS 0x76
-#define VCNL4010_I2C_ADDRESS 0x13
-#define SERIAL_SPEED 9600
+// Include libraries for the sensors
+#include <PMS7003.h>
+#include <MQ7.h>
+#include <MQ811.h>
 
-// Initialize sensors
-Plantower_PMS7003 pms7003;
-MQ7 mq7(MQ7_SENSOR_PIN, 5.0);
-MQ811 mq811(MQ811_SENSOR_PIN);
-Adafruit_BME280 bme;  // BME280 object
-VCNL4010 vcnl4010(VCNL4010_I2C_ADDRESS);
-char output[256];
+// Motor Driver Pins
+#define ENA 5
+#define IN1 6
+#define IN2 7
+#define ENB 8
+#define IN3 9
+#define IN4 10
 
-// Function prototypes
-void moveForward();
-void stopMovement();
-void updateAirQuality();
-void updateCOLevels();
-void updateCO2Levels();
-void updateWeatherData();
-void updateWindSpeed();
-bool initializeSensors();
+// SD Card Pin
+#define CS_PIN 4 // Chip select pin for SD card
+
+// Create sensor instances
+PMS7003 pms7003;
+MQ7 mq7(A0);
+MQ811 mq811(A1);
+Adafruit_BME280 bme;
+VCNL4010Sensor vcnl4010;
+
+// Data logging file
+File dataFile;
+
+// Function to initialize all sensors
+void initializeSensors() {
+    // Initialize PMS7003
+    pms7003.begin();
+    // Initialize MQ-7 and MQ-811
+    mq7.begin();
+    mq811.begin();
+    // Initialize BME280
+    if (!bme.begin(0x76)) { // Check BME280 I2C address
+        Serial.println("Could not find a valid BME280 sensor, check wiring!");
+        while (1);
+    }
+    // Initialize VCNL4010
+    vcnl4010.begin();
+}
+
+// Function to initialize SD card
+void initializeSD() {
+    Serial.print("Initializing SD card...");
+    if (!SD.begin(CS_PIN)) {
+        Serial.println("SD card initialization failed!");
+        while (1);
+    }
+    Serial.println("SD card is ready to use.");
+}
+
+// Function to write data to SD
+void logData() {
+    dataFile = SD.open("RoverData.txt", FILE_WRITE);
+    if (dataFile) {
+        // Log sensor data
+        dataFile.print("Time: ");
+        dataFile.print(millis() / 1000);
+        dataFile.print("s, PM: ");
+        dataFile.print(pms7003.getPM2_5());
+        dataFile.print(" particles/m³, CO: ");
+        dataFile.print(mq7.readCO());
+        dataFile.print(" ppm, CO₂: ");
+        dataFile.print(mq811.readCO2());
+        dataFile.print(" ppm, Temp: ");
+        dataFile.print(bme.readTemperature());
+        dataFile.print(" °C, Humidity: ");
+        dataFile.print(bme.readHumidity());
+        dataFile.print(" %, Wind Speed: ");
+        dataFile.print(vcnl4010.getWindSpeedKPH());
+        dataFile.println(" kph");
+        dataFile.close(); // Close the file
+    } else {
+        Serial.println("Error opening data file");
+    }
+}
+
+// Function to control motors
+void controlMotors(int leftSpeed, int rightSpeed) {
+    analogWrite(ENA, leftSpeed);
+    analogWrite(ENB, rightSpeed);
+    digitalWrite(IN1, leftSpeed > 0 ? HIGH : LOW);
+    digitalWrite(IN2, leftSpeed < 0 ? HIGH : LOW);
+    digitalWrite(IN3, rightSpeed > 0 ? HIGH : LOW);
+    digitalWrite(IN4, rightSpeed < 0 ? HIGH : LOW);
+}
 
 void setup() {
-    Serial.begin(SERIAL_SPEED);
-    Serial1.begin(SERIAL_SPEED);
+    Serial.begin(115200);
+    initializeSD();
+    initializeSensors();
 
-    if (!initializeSensors()) {
-        Serial.println("Sensor initialization failed. Stopping execution.");
-        while (1);  // Halt execution if sensors fail to initialize
-    }
-    Serial.println("All sensors initialized successfully.");
+    // Set motor pins as output
+    pinMode(ENA, OUTPUT);
+    pinMode(IN1, OUTPUT);
+    pinMode(IN2, OUTPUT);
+    pinMode(ENB, OUTPUT);
+    pinMode(IN3, OUTPUT);
+    pinMode(IN4, OUTPUT);
 }
 
 void loop() {
-    pms7003.updateFrame();
+    // Control motors (example: moving forward)
+    controlMotors(255, 255); // Set speed for both motors
 
-    if (pms7003.hasNewData()) {
-        updateAirQuality();
+    // Log data every 10 seconds
+    static unsigned long lastLogTime = 0;
+    if (millis() - lastLogTime >= 10000) {
+        lastLogTime = millis();
+        logData(); // Log sensor data to SD card
     }
 
-    updateCOLevels();
-    updateCO2Levels();
-    updateWeatherData();
-    updateWindSpeed();
-
-    // Example rover behavior based on air quality and CO levels
-    if (pms7003.getPM_2_5() > 35 || mq7.getPPM() > 35 || mq811.getPPM() > 1000) {  // Threshold values for PM2.5, CO, and CO₂
-        Serial.println("Air quality poor! Stopping rover.");
-        stopMovement();
-    } else {
-        Serial.println("Air quality good! Moving forward.");
-        moveForward();
-    }
-
-    delay(1000);  // Read data every second
-}
-
-bool initializeSensors() {
-    Serial.println("Initializing PMS7003 sensor...");
-    pms7003.init(&Serial1);
-    delay(1000);  // Allow time for sensor warm-up
-
-    if (!bme.begin(BME280_I2C_ADDRESS)) {
-        Serial.println("Could not find BME280 sensor!");
-        return false;  // Return false if initialization fails
-    }
-
-    if (!vcnl4010.begin()) {
-        Serial.println("Could not find VCNL4010 sensor!");
-        return false;  // Return false if initialization fails
-    }
-
-    return true;  // Return true if all sensors initialized successfully
-}
-
-void updateAirQuality() {
-    sprintf(output, "\nSensor Version: %d    Error Code: %d\n",
-            pms7003.getHWVersion(),
-            pms7003.getErrorCode());
-    Serial.print(output);
-
-    sprintf(output, "PM1.0 (ug/m3): %2d     [atmos: %d]\n",
-            pms7003.getPM_1_0(),
-            pms7003.getPM_1_0_atmos());
-    Serial.print(output);
-
-    sprintf(output, "PM2.5 (ug/m3): %2d     [atmos: %d]\n",
-            pms7003.getPM_2_5(),
-            pms7003.getPM_2_5_atmos());
-    Serial.print(output);
-
-    sprintf(output, "PM10 (ug/m3): %2d     [atmos: %d]\n",
-            pms7003.getPM_10_0(),
-            pms7003.getPM_10_0_atmos());
-    Serial.print(output);
-}
-
-void updateCOLevels() {
-    float coPPM = mq7.getPPM();
-    Serial.print("CO Concentration (PPM): ");
-    Serial.println(coPPM);
-}
-
-void updateCO2Levels() {
-    float co2PPM = mq811.getPPM();
-    Serial.print("CO2 Concentration (PPM): ");
-    Serial.println(co2PPM);
-}
-
-void updateWeatherData() {
-    float temperature = bme.readTemperature(); // °C
-    float humidity = bme.readHumidity();       // %
-
-    sprintf(output, "Temperature: %.2f °C, Humidity: %.2f %%\n", temperature, humidity);
-    Serial.print(output);
-}
-
-void updateWindSpeed() {
-    int spins = vcnl4010.readSpins(); // Assume readSpins() function to get the number of spins
-    float windSpeedKPH = calculateWindSpeed(spins); // Custom function to calculate wind speed
-    Serial.print("Wind Speed: ");
-    Serial.print(windSpeedKPH);
-    Serial.println(" km/h");
-}
-
-float calculateWindSpeed(int spins) {
-    // Example calculation: adjust based on your pinwheel specs
-    float windSpeed = spins * 0.5; // Example conversion factor
-    return windSpeed;
-}
-
-void moveForward() {
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, HIGH);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, LOW);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, HIGH);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, LOW);
-    Serial.println("Moving forward.");
-}
-
-void stopMovement() {
-    digitalWrite(MOTOR_LEFT_FORWARD_PIN, LOW);
-    digitalWrite(MOTOR_LEFT_BACKWARD_PIN, LOW);
-    digitalWrite(MOTOR_RIGHT_FORWARD_PIN, LOW);
-    digitalWrite(MOTOR_RIGHT_BACKWARD_PIN, LOW);
-    Serial.println("Rover stopped.");
+    // Delay for stability
+    delay(100);
 }
