@@ -1,24 +1,21 @@
-#ifndef H_MG811
-#define H_MG811
+#ifndef MQ811_H
+#define MQ811_H
 
-#if ARDUINO < 100
-#include <WProgram.h>
-#else
 #include <Arduino.h>
-#endif
+#include <SD.h>
 
-class MG811 {
+// MQ811 sensor class definition
+class MQ811Sensor {
 public:
-    MG811(uint8_t input);
-    void begin(float v400, float v40000);
-    float read();       // return the air quality in 'ppm'
-    float raw();        // return raw data (in volt) from the sensor
-    void calibrate();   // calibrate the sensor to get reference values
+    MQ811Sensor(int pin);
+    void begin();
+    float readCO2();
+    void logDataToSD(File &dataFile);
 
 private:
-    uint8_t _input;
-    float _V400;
-    float _V40000;
+    int sensorPin; // Pin where the sensor is connected
+    float calibrationFactor; // Calibration factor for CO₂ measurement
+    void initializeSensor();
 };
 
-#endif
+#endif // MQ811_H
