@@ -12,50 +12,21 @@ bool BME280Sensor::begin() {
     return true;
 }
 
-// Read sensor data
-void BME280Sensor::readData() {
-    temperature = bme.readTemperature(); // Read temperature
-    humidity = bme.readHumidity();       // Read humidity
-    pressure = bme.readPressure() / 100.0F; // Read pressure and convert to hPa
+// Read temperature and humidity from the BME280 sensor
+void BME280Sensor::readData(float &temperature, float &humidity) {
+    temperature = bme.readTemperature(); // Get temperature in Celsius
+    humidity = bme.readHumidity();       // Get humidity percentage
 }
 
-// Log data to SD card
-void BME280Sensor::logDataToSDCard(File &dataFile) {
+// Log sensor data to an SD card
+void BME280Sensor::logDataToSD(File &dataFile) {
+    float temperature, humidity;
+    readData(temperature, humidity);
+    
+    // Format and log the data
     dataFile.print("Temperature: ");
     dataFile.print(temperature);
-    dataFile.print(" °C, ");
-    dataFile.print("Humidity: ");
+    dataFile.print(" °C, Humidity: ");
     dataFile.print(humidity);
-    dataFile.print(" %, ");
-    dataFile.print("Pressure: ");
-    dataFile.print(pressure);
-    dataFile.println(" hPa");
-}
-
-// Display data on serial monitor for debugging
-void BME280Sensor::displayData() {
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.print(" °C, ");
-    Serial.print("Humidity: ");
-    Serial.print(humidity);
-    Serial.print(" %, ");
-    Serial.print("Pressure: ");
-    Serial.print(pressure);
-    Serial.println(" hPa");
-}
-
-// Get temperature
-float BME280Sensor::getTemperature() {
-    return temperature;
-}
-
-// Get humidity
-float BME280Sensor::getHumidity() {
-    return humidity;
-}
-
-// Get pressure
-float BME280Sensor::getPressure() {
-    return pressure;
+    dataFile.println(" %");
 }
