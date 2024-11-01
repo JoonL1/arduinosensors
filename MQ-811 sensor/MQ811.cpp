@@ -1,57 +1,42 @@
-#include "MG811.h"
+#include "MQ811.h"
 
-/**
- * Constructor
- */
-MG811::MG811(uint8_t input) {
-    _input = input;
-    _V400 = 4.535;   // Initial value - must be calibrated
-    _V40000 = 3.206; // Initial value - must be calibrated
+// Constructor
+MQ811Sensor::MQ811Sensor(int pin) : sensorPin(pin), calibrationFactor(2000.0) {}
+
+// Initialize the MQ811 sensor
+void MQ811Sensor::begin() {
+    pinMode(sensorPin, INPUT); // Set the pin as an input
+    initializeSensor(); // Additional initialization if needed
 }
 
-/**
- * Initialize the usage of the sensor with calibrated values
- */
-void MG811::begin(float v400, float v40000) {
-    _V400 = v400;
-    _V40000 = v40000;
+// Initialize the sensor (if specific setup is needed)
+void MQ811Sensor::initializeSensor() {
+    // Add any sensor-specific initialization here if required
 }
 
-/**
- * Measure multiple raw data from the sensor and compute the mean
- */
-float MG811::raw() {
-    uint8_t i = 0;
-    float buffer = 0;
-    for (i = 0; i < 10; i++) {
-        buffer += analogRead(_input);
-        delay(20); // 20ms
+// Read CO₂ concentration in ppm from the MQ811 sensor
+float MQ811Sensor::readCO2() {
+    int sensorValue = analogRead(sensorPin); // Read the analog value from the sensor
+    float voltage = sensorValue * (5.0 / 1023.0); // Convert the analog value to voltage
+
+    // Convert voltage to CO₂ concentration in ppm
+    // The conversion factor may need to be adjusted based on calibration data
+    float co2PPM = (voltage - 0.5) * calibrationFactor; // Example conversion formula
+    return co2PPM > 0 ? co2PPM : 0; // Ensure no negative readings
+}
+
+// Log CO₂ concentration data to an SD card
+void MQ811Sensor::logDataToSD(File &dataFile) {
+    // Ensure the data file is open
+    if (!dataFile) {
+        Serial.println("Error: Data file is not open.");
+        return;
     }
-    buffer /= i; // Compute the mean
-    return map(buffer, 0, 1023, 0, 5);
-}
-
-/**
- * Measure voltage from the sensor and compute the CO2 ppm value
- */
-float MG811::read() {
-    float buffer = 0;
-    buffer = (_V400 - _V40000) / (log10(400) - log10(40000)); // Delta V
-    buffer = (raw() - _V400) / buffer;
-    buffer += log10(400);
-    return pow(10, buffer);
-}
-
-/**
- * Calibrate the sensor to get reference value for measurement
- */
-void MG811::calibrate() {
-    uint8_t i = 0;
-    Serial.println("Time (min) \t\t Measurement (volt)");
-    for (i = 0; i < 120; i++) {
-        delay(60000); // Wait 1 minute
-        Serial.print(i);
-        Serial.print("\t\t ");
-        Serial.println(raw(), 3);
-    }
+    
+    float co2PPM = readCO2();
+    
+    // Log the data with timestamp
+    dataFile.print("CO2 Concentration: ");
+    dataFile.print(co2PPM);
+    dataFile.println(" ppm");
 }
