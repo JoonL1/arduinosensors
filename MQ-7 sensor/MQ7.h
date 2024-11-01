@@ -2,22 +2,20 @@
 #define MQ7_H
 
 #include <Arduino.h>
+#include <SD.h>
 
-#define coefficient_A 19.32
-#define coefficient_B -0.64
-#define R_Load 10.0 // Load resistance 10 kOhms on the sensor potentiometer
+// MQ7 sensor class definition
+class MQ7Sensor {
+public:
+    MQ7Sensor(int pin);
+    void begin();
+    float readCO();
+    void logDataToSD(File &dataFile);
 
-class MQ7 {
-  private:
-    uint8_t analogPin;
-    float v_in;
-    float voltageConversion(int value);
-  
-  public:
-    MQ7(uint8_t pin, float v_input);
-    float getPPM();
-    float getSensorResistance();
-    float getRatio();
+private:
+    int sensorPin; // Pin where the sensor is connected
+    float calibrationFactor; // Calibration factor for CO measurement
+    void initializeSensor();
 };
 
-#endif
+#endif // MQ7_H
