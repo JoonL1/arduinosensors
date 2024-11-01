@@ -1,32 +1,26 @@
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BME280.h>  // Adafruit BME280 Library
+#include "BME280.h"
 
-// Create an instance of the BME280 sensor
-Adafruit_BME280 bme; // I2C
+// Constructor
+BME280Sensor::BME280Sensor() {}
 
-// Sensor data variables
-float temperature, humidity, pressure;
-
-// Function to initialize the BME280 sensor
-bool initBME280() {
-    if (!bme.begin(0x76)) { // Check the sensor I2C address (0x76 is common for BME280)
+// Initialize the BME280 sensor
+bool BME280Sensor::begin() {
+    if (!bme.begin(0x76)) { // Check the I2C address
         Serial.println("Could not find a valid BME280 sensor, check wiring!");
         return false;
     }
     return true;
 }
 
-// Function to read sensor data
-void readBME280Data() {
-    temperature = bme.readTemperature(); // Read temperature in Celsius
-    humidity = bme.readHumidity();       // Read humidity percentage
-    pressure = bme.readPressure() / 100.0F; // Read pressure in hPa
+// Read sensor data
+void BME280Sensor::readData() {
+    temperature = bme.readTemperature(); // Read temperature
+    humidity = bme.readHumidity();       // Read humidity
+    pressure = bme.readPressure() / 100.0F; // Read pressure and convert to hPa
 }
 
-// Function to log data to SD card
-void logDataToSDCard(File &dataFile) {
-    // Format and log data
+// Log data to SD card
+void BME280Sensor::logDataToSDCard(File &dataFile) {
     dataFile.print("Temperature: ");
     dataFile.print(temperature);
     dataFile.print(" °C, ");
@@ -38,8 +32,8 @@ void logDataToSDCard(File &dataFile) {
     dataFile.println(" hPa");
 }
 
-// Function to display data on serial monitor for debugging
-void displayData() {
+// Display data on serial monitor for debugging
+void BME280Sensor::displayData() {
     Serial.print("Temperature: ");
     Serial.print(temperature);
     Serial.print(" °C, ");
@@ -51,25 +45,17 @@ void displayData() {
     Serial.println(" hPa");
 }
 
-// Setup function
-void setup() {
-    Serial.begin(9600); // Start the serial communication at 9600 baud
-    if (!initBME280()) {
-        while (1); // Halt if the sensor cannot be initialized
-    }
+// Get temperature
+float BME280Sensor::getTemperature() {
+    return temperature;
 }
 
-// Loop function
-void loop() {
-    // Read data from the BME280 sensor
-    readBME280Data();
+// Get humidity
+float BME280Sensor::getHumidity() {
+    return humidity;
+}
 
-    // Log data to SD card (assume dataFile is already opened elsewhere in your main code)
-    File dataFile; // Assume dataFile is correctly initialized before calling logDataToSDCard()
-    logDataToSDCard(dataFile);
-
-    // Optional: Display the data on the serial monitor for debugging
-    displayData();
-
-    delay(10000); // Wait for 10 seconds before the next reading
+// Get pressure
+float BME280Sensor::getPressure() {
+    return pressure;
 }
