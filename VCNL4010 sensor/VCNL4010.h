@@ -1,71 +1,59 @@
-#if ARDUINO >= 100
-#include "Arduino.h"
-#else
-#include "WProgram.h"
-#endif
+#include "VCNL4010.h"
 
-#include <Adafruit_I2CDevice.h>
+// Constructor
+VCNL4010Sensor::VCNL4010Sensor(uint8_t address) 
+    : _address(address), _spinCount(0), _windSpeedKPH(0.0), _lastCountTime(0) {}
 
-#define VCNL4010_I2CADDR_DEFAULT 0x13 ///< I2C address of the sensor
+// Initialize the VCNL4010 sensor
+void VCNL4010Sensor::begin() {
+    Wire.begin(); // Initialize I2C communication
+    // Additional initialization can be done here
+    resetSpinCount(); // Reset spin count to start fresh
+}
 
-/** Registers */
-#define VCNL4010_COMMAND 0x80          ///< Command
-#define VCNL4010_PRODUCTID 0x81        ///< Product ID Revision
-#define VCNL4010_PROXRATE 0x82         ///< Proximity rate
-#define VCNL4010_IRLED 0x83            ///< IR LED current
-#define VCNL4010_AMBIENTPARAMETER 0x84 ///< Ambient light parameter
-#define VCNL4010_AMBIENTDATA 0x85      ///< Ambient light result (16 bits)
-#define VCNL4010_PROXIMITYDATA 0x87    ///< Proximity result (16 bits)
-#define VCNL4010_INTCONTROL 0x89       ///< Interrupt control
-#define VCNL4010_LOWTHRESHOLD 0x8A     ///< Low threshold value (16 bits)
-#define VCNL4010_HITHRESHOLD 0x8C      ///< High threshold value (16 bits)
-#define VCNL4010_INTSTAT 0x8E          ///< Interrupt status
-#define VCNL4010_MODTIMING 0x8F ///< Proximity modulator timing adjustment
+// Update the spin count and calculate wind speed
+void VCNL4010Sensor::update() {
+    unsigned long currentTime = millis();
+    if (currentTime - _lastCountTime >= 1000) { // Update every second
+        // Calculate wind speed based on spins counted
+        _windSpeedKPH = (_spinCount * 60.0) / 1000.0; // Convert spins to KPH (assuming distance per spin is accounted for)
+        resetSpinCount(); // Reset count for next interval
+        _lastCountTime = currentTime; // Update the last count time
+    }
+}
 
-/** Proximity measurement rate */
-typedef enum {
-  VCNL4010_1_95 = 0,    // 1.95     measurements/sec (Default)
-  VCNL4010_3_90625 = 1, // 3.90625  measurements/sec
-  VCNL4010_7_8125 = 2,  // 7.8125   measurements/sec
-  VCNL4010_16_625 = 3,  // 16.625   measurements/sec
-  VCNL4010_31_25 = 4,   // 31.25    measurements/sec
-  VCNL4010_62_5 = 5,    // 62.5     measurements/sec
-  VCNL4010_125 = 6,     // 125      measurements/sec
-  VCNL4010_250 = 7,     // 250      measurements/sec
-} vcnl4010_freq;
+// Get the calculated wind speed in kilometers per hour
+float VCNL4010Sensor::getWindSpeedKPH() const {
+    return _windSpeedKPH;
+}
 
-/** Values for command register */
-#define VCNL4010_MEASUREPROXIMITY                                              \
-  0x08 ///< Start a single on-demand proximity measurement
-#define VCNL4010_MEASUREAMBIENT                                                \
-  0x10 ///< Start a single on-demand ambient light measurement
-#define VCNL4010_PROXIMITYREADY                                                \
-  0x20 ///< Read-only - Value = 1 when proximity measurement data is available
-#define VCNL4010_AMBIENTREADY                                                  \
-  0x40 ///< Read-only - Value = 1 when ambient light measurement data is
-       ///< available
+// Log wind speed data to an SD card
+void VCNL4010Sensor::logDataToSD(File &dataFile) {
+    // Ensure the data file is open
+    if (!dataFile) {
+        Serial.println("Error: Data file is not open.");
+        return;
+    }
+    
+    update(); // Update wind speed
+    dataFile.print("Wind Speed: ");
+    dataFile.print(getWindSpeedKPH());
+    dataFile.println(" km/h");
+}
 
-/**************************************************************************/
-/*!
-    @brief  The VCNL4010 class
-*/
-/**************************************************************************/
-class Adafruit_VCNL4010 {
-public:
-  Adafruit_VCNL4010();
-  boolean begin(uint8_t a = VCNL4010_I2CADDR_DEFAULT, TwoWire *theWire = &Wire);
+// Print wind speed data to Serial Monitor for debugging
+void VCNL4010Sensor::printDataToSerial() const {
+    Serial.print("Wind Speed: ");
+    Serial.print(getWindSpeedKPH());
+    Serial.println(" km/h");
+}
 
-  uint8_t getLEDcurrent(void);
-  void setLEDcurrent(uint8_t c);
+// Reset spin count
+void VCNL4010Sensor::resetSpinCount() {
+    _spinCount = 0; // Reset the spin count
+}
 
-  void setFrequency(vcnl4010_freq f);
-  uint16_t readProximity(void);
-  uint16_t readAmbient(void);
-
-private:
-  void write8(uint8_t address, uint8_t data);
-  uint16_t read16(uint8_t address);
-  uint8_t read8(uint8_t address);
-
-  Adafruit_I2CDevice *i2c_dev = NULL; ///< Pointer to I2C bus interface
-};
+// Increment spin count (this should be called in an interrupt routine)
+void VCNL4010Sensor::incrementSpinCount() {
+    _spinCount++; // Increment the spin count
+}
